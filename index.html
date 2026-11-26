@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10151d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>株ログ</title>
+<style>
+*{box-sizing:border-box}
+body{background:#10151d;color:#edf2f7;font:14px system-ui;margin:0;padding:20px 12px;max-width:620px;margin:auto}
+h1{font-size:22px}
+section{background:#1b2430;border-radius:16px;padding:15px;margin:12px 0}
+small{color:#a0adbd}
+strong{font-size:26px;display:block}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.day{min-height:72px;padding:5px 2px;border:1px solid #344252;border-radius:6px;overflow:hidden;text-align:left}
+.off{opacity:.4}
+.target{font-size:10px;color:#8290a0;display:block;margin-top:6px}
+.actual{font-size:11px;display:block}
+.pos{color:#56d6a1}
+.neg{color:#ff8181}
+button,input{background:#263443;color:inherit;border:1px solid #425266;border-radius:8px;padding:9px;font:inherit;min-width:0}
+button{cursor:pointer}
+input{width:100%}
+label{display:block;color:#a0adbd;font-size:12px}
+nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+progress{width:100%;accent-color:#56d6a1}
+summary{cursor:pointer}
+p{line-height:1.6}
+.today{border-color:#56d6a1}
+</style>
+<h1>株ログ <small>TRADE JOURNAL</small></h1>
+<div id="app"></div>
+<script>
+const $=id=>document.getElementById(id),
+iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+dt=s=>new Date(s+'T12:00:00'),
+today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date()),
+yen=n=>Math.round(n).toLocaleString('ja-JP')+'円',
+pct=n=>n.toFixed(1)+'%';
+
+let s={start:'2026-11-27',end:'2027-05-01',capital:1600000,goal:4000000,entries:{}};
+try{s=JSON.parse(localStorage.getItem('kabulog')||'null')||s}catch{}
+let month=dt(today());
+month.setDate(1);
+let selected='';
+
+function save(){
+try{localStorage.setItem('kabulog',JSON.stringify(s))}
+catch{alert('保存できません。CSVを出力してください。')}
+}
+
+const cache={};
+function holidays(y){
+if(cache[y])return cache[y];
+let h=new Set(),
+add=(m,d)=>h.add(iso(new Date(y,m-1,d,12))),
+nth=(m,n)=>1+(8-new Date(y,m-1,1).getDay())%7+7*(n-1);
+[[1,1],[2,11],[2,23],[4,29],[5,3],[5,4],[5,5],[8,11],[11,3],[11,23]].forEach(x=>add(...x));
+add(1,nth(1,2));
+add(7,nth(7,3));
+add(9,nth(9,3));
+add(10,nth(10,2));
+add(3,Math.floor(20.8431+.242194*(y-1980)-Math.floor((y-1980)/4)));
+add(9,Math.floor(23.2488+.242194*(y-1980)-Math.floor((y-1980)/4)));
+for(let d=new Date(y,0,2,12);d.getFullYear()===y;d.setDate(d.getDate()+1)){
+let a=new Date(d),b=new Date(d);
+a.setDate(a.getDate()-1);
+b.setDate(b.getDate()+1);
+if(d.getDay()!==0&&h.has(iso(a))&&h.has(iso(b)))h.add(iso(d))
+}
+for(let k of [...h].sort()){
+let d=dt(k);
+if(d.getDay()===0){
+do{d.setDate(d.getDate()+1)}while(h.has(iso(d)));
+h.add(iso(d))
+}}
+add(1,2);add(1,3);add(12,31);
+return cache[y]=h
+}
+
+function trade(d){
+return d.getDay()>0&&d.getDay()<6&&!holidays(d.getFullYear()).has(iso(d))
+}
+
+function days(){
+let a=[];
+for(let d=dt(s.start);d<=dt(s.end);d.setDate(d.getDate()+1))
+if(trade(d))a.push(iso(d));
+return a
+}
+
+function render(){
+let all=days(),now=today(),
+hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(':','')),
+past=all.filter(k=>k<now||(k===now&&(hour>=1530||k in s.entries))).length,
+left=all.length-past,
+g=s.goal-s.capital,
+daily=g/(all.length||1),
+total=all.reduce((a,k)=>a+(s.entries[k]||0),0),
+p=total/g*100,
+pace=past/(all.length||1)*100,
+y=month.getFullYear(),
+m=month.getMonth(),
+prefix=iso(month).slice(0,7),
+md=all.filter(k=>k.startsWith(prefix)),
+mt=md.reduce((a,k)=>a+(s.entries[k]||0),0);
+
+$('app').innerHTML=`
+<section>
+<div class="grid">
+<div><small>残り営業日</small><strong>${left} 日</strong><small>期限 ${s.end}</small></div>
+<div><small>利益進捗率</small><strong class="${p<0?'neg':'pos'}">${pct(p)}</strong><small>目標ライン ${pct(pace)}</small></div>
+</div>
+<progress max="100" value="${Math.max(0,p)}"></progress>
+<p>目標ペースとの差 <b>${yen(total-daily*past)}</b></p>
+<div class="grid">
+<div><small>現在資産</small><strong>${yen(s.capital+total)}</strong></div>
+<div><small>累計収支</small><strong class="${total<0?'neg':'pos'}">${yen(total)}</strong></div>
+<div><small>当初の日次目標</small><br>${yen(daily)}</div>
+<div><small>残り日次必要利益</small><br>${left?yen(Math.max(0,g-total)/left):'—'}</div>
+</div>
+</section>
+<section>
+<details><summary>目標設定</summary>
+<div class="grid">
+<label>開始日<input id="start" type="date" value="${s.start}"></label>
+<label>期限<input id="end" type="date" value="${s.end}"></label>
+<label>元手<input id="capital" type="number" value="${s.capital}"></label>
+<label>目標資産<input id="goal" type="number" value="${s.goal}"></label>
+</div>
+<p><button id="apply">設定を保存</button></p>
+</details>
+</section>
+<section>
+<nav><button id="prev">‹</button><b>${y}年 ${m+1}月</b><button id="next">›</button></nav>
+<p>月間収支 ${yen(mt)} / 目標 ${yen(md.length*daily)}</p>
+<div class="cal" id="cal">${['日','月','火','水','木','金','土'].map(x=>'<small style="text-align:center">'+x+'</small>').join('')}</div>
+<div id="edit"></div>
+</section>
+<section>
+<button id="csv">CSV出力</button>
+<button id="backup">バックアップ</button>
+<button id="restore">復元</button>
+<input hidden type="file" id="file" accept="application/json">
+<p><small>端末内保存。税引前。通常の東証休場日を計算（臨時休場・祝日変更は未反映）。</small></p>
+</section>`;
+
+let cal=$('cal');
+for(let i=0;i<new Date(y,m,1).getDay();i++)
+cal.append(document.createElement('div'));
+
+for(let i=1;i<=new Date(y,m+1,0).getDate();i++){
+let k=iso(new Date(y,m,i,12)),
+active=all.includes(k),
+v=s.entries[k],
+b=document.createElement('button');
+b.className='day'+(!active?' off':'')+(k===now?' today':'');
+b.disabled=!active;
+b.innerHTML=`${i}<span class="target">${active?Math.round(daily).toLocaleString():!trade(dt(k))?'休場':''}</span>${v!==undefined?`<span class="actual ${v<0?'neg':'pos'}">${v.toLocaleString()}</span><small>${pct(v/daily*100)}</small>`:''}`;
+b.onclick=()=>{selected=k;render()};
+cal.append(b)
+}
+
+if(all.includes(selected)){
+$('edit').innerHTML=`<p>${selected} の収支（円）</p>
+<input id="pnl" type="number" inputmode="decimal" value="${s.entries[selected]??''}">
+<p><button id="record">保存</button> <button id="delete">削除</button></p>`;
+$('record').onclick=()=>{
+if($('pnl').value!==''&&Number.isFinite(+$('pnl').value)){
+s.entries[selected]=+$('pnl').value;
+save();render()
+}};
+$('delete').onclick=()=>{
+delete s.entries[selected];save();render()
+}}
+
+$('prev').onclick=()=>{
+month.setMonth(m-1);selected='';render()
+};
+$('next').onclick=()=>{
+month.setMonth(m+1);selected='';render()
+};
+$('apply').onclick=()=>{
+let a=$('start').value,b=$('end').value,
+c=+$('capital').value,g=+$('goal').value;
+if(!a||!b||a>b||c<0||g<=c||dt(b)-dt(a)>3660*86400000||dt(a).getFullYear()<2026||dt(b).getFullYear()>2099)
+return alert('日付と金額を確認してください');
+Object.assign(s,{start:a,end:b,capital:c,goal:g});
+save();render()
+};
+
+function download(name,data,type){
+let a=document.createElement('a');
+a.href=URL.createObjectURL(new Blob([data],{type}));
+a.download=name;a.click();
+setTimeout(()=>URL.revokeObjectURL(a.href),1000)
+}
+$('csv').onclick=()=>download('kabulog.csv','\ufeff日付,目標,収支\n'+all.map(k=>`${k},${Math.round(daily)},${s.entries[k]??''}`).join('\n'),'text/csv');
+$('backup').onclick=()=>download('kabulog.json',JSON.stringify(s),'application/json');
+$('restore').onclick=()=>$('file').click();
+$('file').onchange=async e=>{
+try{
+let v=JSON.parse(await e.target.files[0].text());
+if(!/^\d{4}-\d{2}-\d{2}$/.test(v.start)||!/^\d{4}-\d{2}-\d{2}$/.test(v.end)||v.start>v.end||dt(v.end)-dt(v.start)>3660*86400000||!Number.isFinite(v.capital)||!Number.isFinite(v.goal)||v.goal<=v.capital||!v.entries||Object.values(v.entries).some(x=>!Number.isFinite(x)))throw Error();
+if(confirm('現在のデータを置き換えますか？')){
+s=v;save();render()
+}
+}catch{alert('無効なバックアップです')}
+}
+}
+render();
+setInterval(()=>{
+if(!document.activeElement.matches('input')&&!document.querySelector('details[open]'))render()
+},60000);
+if('serviceWorker'in navigator)
+navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+</html>
