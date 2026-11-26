@@ -159,13 +159,13 @@ active=all.includes(k),
 v=s.entries[k],
 b=document.createElement('button');
 b.className='day'+(!active?' off':'')+(k===now?' today':'');
-b.disabled=!active;
+b.disabled=false;
 b.innerHTML=`${i}<span class="target">${active?Math.round(daily).toLocaleString():!trade(dt(k))?'休場':''}</span>${v!==undefined?`<span class="actual ${v<0?'neg':'pos'}">${v.toLocaleString()}</span><small>${pct(v/daily*100)}</small>`:''}`;
 b.onclick=()=>{selected=k;render()};
 cal.append(b)
 }
 
-if(all.includes(selected)){
+if(selected){
 $('edit').innerHTML=`<p>${selected} の収支（円）</p>
 <input id="pnl" type="number" inputmode="decimal" value="${s.entries[selected]??''}">
 <p><button id="record">保存</button> <button id="delete">削除</button></p>`;
