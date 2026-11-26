@@ -107,7 +107,13 @@ y=month.getFullYear(),
 m=month.getMonth(),
 prefix=iso(month).slice(0,7),
 md=all.filter(k=>k.startsWith(prefix)),
-mt=md.reduce((a,k)=>a+(s.entries[k]||0),0);
+records=Object.entries(s.entries).filter(([k,v])=>k.startsWith(prefix)),
+mt=records.reduce((a,[k,v])=>a+v,0),
+wins=records.filter(([k,v])=>v>0),
+losses=records.filter(([k,v])=>v<0),
+winTotal=wins.reduce((a,[k,v])=>a+v,0),
+lossTotal=losses.reduce((a,[k,v])=>a+v,0),
+winRate=wins.length+losses.length?wins.length/(wins.length+losses.length)*100:0;
 
 $('app').innerHTML=`
 <section>
@@ -139,6 +145,18 @@ $('app').innerHTML=`
 <nav><button id="prev">‹</button><b>${y}年 ${m+1}月</b><button id="next">›</button></nav>
 <p>月間収支 ${yen(mt)} / 目標 ${yen(md.length*daily)}</p>
 <div class="cal" id="cal">${['日','月','火','水','木','金','土'].map(x=>'<small style="text-align:center">'+x+'</small>').join('')}</div>
+<div style="margin-top:20px;border-top:1px solid #425266;padding-top:15px">
+<small>${m+1}月の合計収支</small>
+<strong class="${mt<0?'neg':'pos'}">${mt>0?'+':''}${yen(mt)}</strong>
+<div class="grid" style="margin-top:15px">
+<div><small>利益合計</small><br><b class="pos">${yen(winTotal)}</b></div>
+<div><small>損失合計</small><br><b class="neg">${yen(lossTotal)}</b></div>
+<div><small>勝ち日数</small><br>${wins.length}日</div>
+<div><small>負け日数</small><br>${losses.length}日</div>
+<div><small>勝率</small><br>${pct(winRate)}</div>
+<div><small>月間目標達成率</small><br><b class="${mt<0?'neg':'pos'}">${md.length?pct(mt/(md.length*daily)*100):'—'}</b></div>
+</div>
+</div>
 <div id="edit"></div>
 </section>
 <section>
@@ -166,17 +184,72 @@ cal.append(b)
 }
 
 if(selected){
-$('edit').innerHTML=`<p>${selected} の収支（円）</p>
-<input id="pnl" type="number" inputmode="decimal" value="${s.entries[selected]??''}">
-<p><button id="record">保存</button> <button id="delete">削除</button></p>`;
+let old=s.entries[selected];
+let sign=old<0?-1:1;
+$('edit').innerHTML=`
+<div id="overlay" style="position:fixed;inset:0;background:#0009;z-index:999;display:flex;align-items:center;justify-content:center;padding:20px">
+<div style="background:#1b2430;border:1px solid #425266;border-radius:20px;padding:22px;width:100%;max-width:380px;box-shadow:0 10px 40px #0008">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<b style="font-size:18px">${selected.replaceAll('-','/')}</b>
+<button id="close">×</button>
+</div>
+<p><small>日次収支を入力</small></p>
+<div class="grid">
+<button id="plus" style="color:#56d6a1">＋ 利益</button>
+<button id="minus" style="color:#ff8181">− 損失</button>
+</div>
+<p><input id="pnl" type="text" inputmode="numeric" placeholder="金額を入力" value="${old===undefined?'':Math.abs(old)}" style="font-size:24px;text-align:center"></p>
+<strong id="preview" style="text-align:center;margin:15px 0"></strong>
+<button id="record" style="width:100%;background:#168465;color:white;font-weight:bold;padding:14px">保存する</button>
+<p style="text-align:center"><button id="delete" style="color:#ff8181">記録を削除</button></p>
+</div>
+</div>`;
+
+function updatePreview(){
+let n=Math.abs(Number($('pnl').value)||0);
+$('plus').style.background=sign===1?'#164e3b':'#263443';
+$('minus').style.background=sign===-1?'#632d35':'#263443';
+$('preview').className=sign===-1?'neg':'pos';
+$('preview').textContent=(sign===-1?'−':'+')+yen(n);
+}
+
+$('plus').onclick=()=>{
+sign=1;updatePreview()
+};
+$('minus').onclick=()=>{
+sign=-1;updatePreview()
+};
+$('pnl').oninput=()=>{
+$('pnl').value=$('pnl').value.replace(/[^0-9]/g,'');
+updatePreview()
+};
+$('close').onclick=()=>{
+selected='';render()
+};
+$('overlay').onclick=e=>{
+if(e.target===$('overlay')){
+selected='';render()
+}
+};
 $('record').onclick=()=>{
-if($('pnl').value!==''&&Number.isFinite(+$('pnl').value)){
-s.entries[selected]=+$('pnl').value;
-save();render()
-}};
+let n=Number($('pnl').value);
+if($('pnl').value!==''&&Number.isFinite(n)){
+s.entries[selected]=sign*Math.abs(n);
+save();
+selected='';
+render()
+}
+};
 $('delete').onclick=()=>{
-delete s.entries[selected];save();render()
-}}
+if(confirm('この日の収支を削除しますか？')){
+delete s.entries[selected];
+save();
+selected='';
+render()
+}
+};
+updatePreview();
+}
 
 $('prev').onclick=()=>{
 month.setMonth(m-1);selected='';render()
